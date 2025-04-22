@@ -5,33 +5,27 @@ import { useToast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
 import AdminAuth from '@/components/AdminAuth';
+import { Loader2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const AdminDashboard = () => {
   const [albums, setAlbums] = useState([]);
   const [newAlbum, setNewAlbum] = useState({ title: '', description: '', price: '' });
-  const [selectedAlbum, setSelectedAlbum] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   useEffect(() => {
-    const checkAuth = () => {
-      const isAdminAuth = localStorage.getItem('isAdminAuthenticated') === 'true';
-      setIsAuthenticated(isAdminAuth);
-      if (isAdminAuth) {
-        fetchAlbums();
-      }
-    };
     checkAuth();
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem('isAdminAuthenticated');
-    setIsAuthenticated(false);
-    toast({
-      title: "Déconnexion",
-      description: "Vous avez été déconnecté de l'espace administrateur",
-    });
+  const checkAuth = () => {
+    const isAdminAuth = localStorage.getItem('isAdminAuthenticated') === 'true';
+    setIsAuthenticated(isAdminAuth);
+    if (isAdminAuth) {
+      fetchAlbums();
+    }
   };
 
   const fetchAlbums = async () => {
@@ -41,7 +35,7 @@ const AdminDashboard = () => {
         .select('*, photos(*)');
       
       if (error) throw error;
-      setAlbums(data);
+      setAlbums(data || []);
     } catch (error) {
       console.error('Erreur de chargement des albums:', error);
       toast({
@@ -87,29 +81,33 @@ const AdminDashboard = () => {
     try {
       setUploading(true);
       const file = e.target.files[0];
-      if (!file) return;
+      if (!file) {
+        toast({
+          title: "Erreur",
+          description: "Aucun fichier sélectionné",
+          variant: "destructive",
+        });
+        return;
+      }
 
       // Créer un nom de fichier unique
       const fileExt = file.name.split('.').pop();
       const fileName = `${Math.random()}.${fileExt}`;
       const filePath = `photos/${fileName}`;
 
-      // Upload du fichier
+      // Upload du fichier dans le bucket
       const { error: uploadError } = await supabase.storage
         .from('photos')
         .upload(filePath, file);
 
-      if (uploadError) {
-        console.error('Erreur upload storage:', uploadError);
-        throw uploadError;
-      }
+      if (uploadError) throw uploadError;
 
       // Obtenir l'URL publique
       const { data: { publicUrl } } = supabase.storage
         .from('photos')
         .getPublicUrl(filePath);
 
-      // Insérer dans la base de données
+      // Insérer dans la table photos
       const { error: dbError } = await supabase
         .from('photos')
         .insert([{
@@ -118,28 +116,35 @@ const AdminDashboard = () => {
           album_id: albumId
         }]);
 
-      if (dbError) {
-        console.error('Erreur insertion DB:', dbError);
-        throw dbError;
-      }
+      if (dbError) throw dbError;
 
       toast({
         title: "Succès",
         description: "Photo ajoutée avec succès",
       });
       
-      // Rafraîchir la liste des albums
-      fetchAlbums();
+      await fetchAlbums();
     } catch (error) {
       console.error('Erreur d\'upload:', error);
       toast({
         title: "Erreur",
-        description: "Impossible d'uploader la photo. Veuillez réessayer.",
+        description: error.message || "Impossible d'uploader la photo",
         variant: "destructive",
       });
     } finally {
       setUploading(false);
+      e.target.value = '';
     }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('isAdminAuthenticated');
+    setIsAuthenticated(false);
+    toast({
+      title: "Déconnexion",
+      description: "Vous avez été déconnecté de l'espace administrateur",
+    });
+    navigate('/');
   };
 
   if (!isAuthenticated) {
@@ -199,59 +204,63 @@ const AdminDashboard = () => {
           </form>
         </motion.div>
 
-        <div className="bg-gray-800 rounded-lg p-6">
-          <h2 className="text-xl font-semibold mb-4">Albums existants</h2>
-          <div className="space-y-4">
-            {albums.map((album) => (
-              <motion.div
-                key={album.id}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="bg-gray-700 rounded-lg p-4"
-              >
-                <div className="flex justify-between items-center mb-4">
-                  <div>
-                    <h3 className="font-semibold">{album.title}</h3>
-                    <p className="text-sm text-gray-400">{album.description}</p>
-                    <p className="text-sm">Prix: {album.price}€</p>
-                    <p className="text-sm mt-2">
-                      {album.photos ? `${album.photos.length} photos` : '0 photo'}
-                    </p>
-                  </div>
-                  <div>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => uploadPhoto(e, album.id)}
-                      className="hidden"
-                      id={`photo-upload-${album.id}`}
-                      disabled={uploading}
-                    />
-                    <label
-                      htmlFor={`photo-upload-${album.id}`}
-                      className="cursor-pointer bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg inline-block"
-                    >
-                      {uploading ? 'Upload en cours...' : 'Ajouter une photo'}
-                    </label>
-                  </div>
+        <div className="space-y-6">
+          {albums.map((album) => (
+            <motion.div
+              key={album.id}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="bg-gray-800 rounded-lg p-6"
+            >
+              <div className="flex justify-between items-center mb-4">
+                <div>
+                  <h3 className="text-xl font-semibold">{album.title}</h3>
+                  <p className="text-gray-400">{album.description}</p>
+                  <p className="text-sm mt-1">Prix: {album.price}€</p>
                 </div>
-                
-                {album.photos && album.photos.length > 0 && (
-                  <div className="grid grid-cols-3 gap-4 mt-4">
-                    {album.photos.map((photo) => (
-                      <div key={photo.id} className="relative">
-                        <img
-                          src={photo.image_url}
-                          alt={photo.title}
-                          className="w-full h-24 object-cover rounded"
-                        />
+                <div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => uploadPhoto(e, album.id)}
+                    className="hidden"
+                    id={`photo-upload-${album.id}`}
+                    disabled={uploading}
+                  />
+                  <label
+                    htmlFor={`photo-upload-${album.id}`}
+                    className={`cursor-pointer inline-flex items-center px-4 py-2 rounded-md ${
+                      uploading 
+                        ? 'bg-gray-600' 
+                        : 'bg-blue-600 hover:bg-blue-700'
+                    } transition-colors duration-200`}
+                  >
+                    {uploading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                    {uploading ? 'Upload en cours...' : 'Ajouter une photo'}
+                  </label>
+                </div>
+              </div>
+
+              {album.photos && album.photos.length > 0 && (
+                <div className="grid grid-cols-3 gap-4 mt-4">
+                  {album.photos.map((photo) => (
+                    <div key={photo.id} className="relative group">
+                      <img
+                        src={photo.image_url}
+                        alt={photo.title}
+                        className="w-full h-32 object-cover rounded-lg"
+                      />
+                      <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-300 rounded-lg flex items-center justify-center">
+                        <p className="text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-center p-2">
+                          {photo.title}
+                        </p>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </motion.div>
-            ))}
-          </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          ))}
         </div>
       </div>
     </div>

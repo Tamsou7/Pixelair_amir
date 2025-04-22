@@ -7,24 +7,36 @@ import { useToast } from '@/components/ui/use-toast';
 const AdminAuth = ({ onSuccess }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    setLoading(true);
     
-    if (username === 'Tamsou7' && password === 'Tokyo141193!!') {
-      localStorage.setItem('isAdminAuthenticated', 'true');
-      onSuccess();
-      toast({
-        title: "Connexion réussie",
-        description: "Bienvenue dans l'espace administrateur",
-      });
-    } else {
+    try {
+      if (username === 'Tamsou7' && password === 'Tokyo141193!!') {
+        localStorage.setItem('isAdminAuthenticated', 'true');
+        onSuccess();
+        toast({
+          title: "Connexion réussie",
+          description: "Bienvenue dans l'espace administrateur",
+        });
+      } else {
+        toast({
+          title: "Erreur",
+          description: "Identifiants incorrects",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
       toast({
         title: "Erreur",
-        description: "Identifiants incorrects",
+        description: "Une erreur est survenue",
         variant: "destructive",
       });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -46,6 +58,7 @@ const AdminAuth = ({ onSuccess }) => {
               onChange={(e) => setUsername(e.target.value)}
               className="w-full p-2 rounded bg-gray-700 border border-gray-600"
               required
+              placeholder="Entrez votre nom d'utilisateur"
             />
           </div>
 
@@ -57,14 +70,16 @@ const AdminAuth = ({ onSuccess }) => {
               onChange={(e) => setPassword(e.target.value)}
               className="w-full p-2 rounded bg-gray-700 border border-gray-600"
               required
+              placeholder="Entrez votre mot de passe"
             />
           </div>
 
           <Button 
             type="submit" 
             className="w-full bg-blue-600 hover:bg-blue-700"
+            disabled={loading}
           >
-            Se connecter
+            {loading ? "Connexion en cours..." : "Se connecter"}
           </Button>
         </form>
       </motion.div>
